@@ -1,7 +1,8 @@
-using System;
+﻿using System;
 using System.Data;
 using System.Windows.Forms;
 using MySql.Data.MySqlClient;
+using Prometheus;
 
 namespace GestionNotesWinForms
 {
@@ -9,25 +10,39 @@ namespace GestionNotesWinForms
     {
         private MySqlConnection connection;
 
+        // Métriques Prometheus
+        private readonly Counter errorCounter = Metrics.CreateCounter("error_count", "Nombre d'erreurs dans l'application");
+        private readonly Gauge eleveCount = Metrics.CreateGauge("eleve_count", "Nombre total d'élèves");
+        private readonly Gauge coursCount = Metrics.CreateGauge("cours_count", "Nombre total de cours");
+        private readonly Gauge noteCount = Metrics.CreateGauge("note_count", "Nombre total de notes");
+        private readonly Gauge moyenneGlobale = Metrics.CreateGauge("moyenne_globale_ponderee", "Moyenne pondérée de la classe");
+
         public Form1()
         {
             InitializeComponent();
+
+            // Serveur Prometheus
+            var metricServer = new KestrelMetricServer(port: 1234);
+            metricServer.Start();
+
             ConnectToDatabase();
             LoadEleves();
             LoadCours();
+            UpdateNoteStats(); // mise à jour initiale
         }
 
         private void ConnectToDatabase()
         {
             try
             {
-                string connStr = "server=localhost;user=gestion_note;database=gestion_notes;port=3306;password=Super";
+                string connStr = "server=localhost;user=zackaryist;database=gestion_notes;port=3306;password=Super";
                 connection = new MySqlConnection(connStr);
                 connection.Open();
-                lblStatus.Text = "Connect� � la base de donn�es";
+                lblStatus.Text = "Connecté à la base de données";
             }
             catch (Exception ex)
             {
+                errorCounter.Inc();
                 lblStatus.Text = "Erreur: " + ex.Message;
             }
         }
@@ -40,6 +55,8 @@ namespace GestionNotesWinForms
             while (reader.Read())
                 cmbEleves.Items.Add(new ComboBoxItem(reader.GetString("nom"), reader.GetInt32("id")));
             reader.Close();
+
+            eleveCount.Set(cmbEleves.Items.Count);
         }
 
         private void LoadCours()
@@ -50,6 +67,8 @@ namespace GestionNotesWinForms
             while (reader.Read())
                 cmbCours.Items.Add(new ComboBoxItem(reader.GetString("nom"), reader.GetInt32("id")));
             reader.Close();
+
+            coursCount.Set(cmbCours.Items.Count);
         }
 
         private void btnAddEleve_Click(object sender, EventArgs e)
@@ -87,6 +106,8 @@ namespace GestionNotesWinForms
 
             txtValeurNote.Clear();
             txtPonderation.Clear();
+
+            UpdateNoteStats();
         }
 
         private void btnAfficherMoyennes_Click(object sender, EventArgs e)
@@ -107,9 +128,18 @@ namespace GestionNotesWinForms
             dgvMoyennes.DataSource = table;
         }
 
+        private void UpdateNoteStats()
+        {
+            var cmd = new MySqlCommand("SELECT COUNT(*) FROM notes", connection);
+            noteCount.Set(Convert.ToDouble(cmd.ExecuteScalar()));
+
+            cmd = new MySqlCommand("SELECT SUM(valeur * ponderation) / SUM(ponderation) FROM notes", connection);
+            var result = cmd.ExecuteScalar();
+            moyenneGlobale.Set(result != DBNull.Value ? Convert.ToDouble(result) : 0);
+        }
+
         private void txtNomEleve_TextChanged(object sender, EventArgs e)
         {
-
         }
     }
 
