@@ -10,7 +10,6 @@ namespace GestionNotesWinForms
     {
         private MySqlConnection connection;
 
-        // Métriques Prometheus
         private readonly Counter errorCounter = Metrics.CreateCounter("error_count", "Nombre d'erreurs dans l'application");
         private readonly Gauge eleveCount = Metrics.CreateGauge("eleve_count", "Nombre total d'élèves");
         private readonly Gauge coursCount = Metrics.CreateGauge("cours_count", "Nombre total de cours");
@@ -28,7 +27,7 @@ namespace GestionNotesWinForms
             ConnectToDatabase();
             LoadEleves();
             LoadCours();
-            UpdateNoteStats(); // mise à jour initiale
+            UpdateNoteStats(); 
         }
 
         private void ConnectToDatabase()
