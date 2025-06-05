@@ -3,6 +3,7 @@ using System.Data;
 using System.Windows.Forms;
 using MySql.Data.MySqlClient;
 using Prometheus;
+using System.Collections.Generic;
 
 namespace GestionNotesWinForms
 {
@@ -16,18 +17,32 @@ namespace GestionNotesWinForms
         private readonly Gauge noteCount = Metrics.CreateGauge("note_count", "Nombre total de notes");
         private readonly Gauge moyenneGlobale = Metrics.CreateGauge("moyenne_globale_ponderee", "Moyenne pondérée de la classe");
 
+        private readonly Gauge pondParCours = Metrics.CreateGauge(
+            "ponderation_par_cours",
+            "Somme des pondérations par cours",
+            new[] { "cours", "ponderation" });
+
+        private readonly Gauge nbNotesParEleve = Metrics.CreateGauge(
+            "nombre_notes_par_eleve",
+            "Nombre de notes par élève",
+            new[] { "eleve" });
+
+        private readonly Gauge nbNotesParCours = Metrics.CreateGauge(
+            "nombre_notes_par_cours",
+            "Nombre de notes par cours",
+            new[] { "cours" });
+
         public Form1()
         {
             InitializeComponent();
 
-            // Serveur Prometheus
             var metricServer = new KestrelMetricServer(port: 1234);
             metricServer.Start();
 
             ConnectToDatabase();
             LoadEleves();
             LoadCours();
-            UpdateNoteStats(); 
+            UpdateNoteStats();
         }
 
         private void ConnectToDatabase()
@@ -72,7 +87,7 @@ namespace GestionNotesWinForms
 
         private void btnAddEleve_Click(object sender, EventArgs e)
         {
-            if (txtNomEleve.Text.Trim() == "") return;
+            if (string.IsNullOrWhiteSpace(txtNomEleve.Text)) return;
             var cmd = new MySqlCommand("INSERT INTO eleves (nom) VALUES (@nom)", connection);
             cmd.Parameters.AddWithValue("@nom", txtNomEleve.Text);
             cmd.ExecuteNonQuery();
@@ -82,7 +97,7 @@ namespace GestionNotesWinForms
 
         private void btnAddCours_Click(object sender, EventArgs e)
         {
-            if (txtNomCours.Text.Trim() == "") return;
+            if (string.IsNullOrWhiteSpace(txtNomCours.Text)) return;
             var cmd = new MySqlCommand("INSERT INTO cours (nom) VALUES (@nom)", connection);
             cmd.Parameters.AddWithValue("@nom", txtNomCours.Text);
             cmd.ExecuteNonQuery();
@@ -96,7 +111,7 @@ namespace GestionNotesWinForms
             if (!double.TryParse(txtValeurNote.Text, out double valeur)) return;
             if (!int.TryParse(txtPonderation.Text, out int pond) || pond < 1 || pond > 5) return;
 
-            var cmd = new MySqlCommand("INSERT INTO notes (eleve_id, cours_id, valeur, ponderation) VALUES (@eid, @cid, @val, @pond)", connection);
+            var cmd = new MySqlCommand("INSERT INTO notes (eleve_id, cours_id, valeur, ponderation, date_note) VALUES (@eid, @cid, @val, @pond, NOW())", connection);
             cmd.Parameters.AddWithValue("@eid", eleve.Value);
             cmd.Parameters.AddWithValue("@cid", cours.Value);
             cmd.Parameters.AddWithValue("@val", valeur);
@@ -129,16 +144,96 @@ namespace GestionNotesWinForms
 
         private void UpdateNoteStats()
         {
+            // Mise à jour des compteurs globaux
             var cmd = new MySqlCommand("SELECT COUNT(*) FROM notes", connection);
             noteCount.Set(Convert.ToDouble(cmd.ExecuteScalar()));
+
+            cmd = new MySqlCommand("SELECT COUNT(*) FROM cours", connection);
+            coursCount.Set(Convert.ToDouble(cmd.ExecuteScalar()));
 
             cmd = new MySqlCommand("SELECT SUM(valeur * ponderation) / SUM(ponderation) FROM notes", connection);
             var result = cmd.ExecuteScalar();
             moyenneGlobale.Set(result != DBNull.Value ? Convert.ToDouble(result) : 0);
+
+            // Mise à jour métriques pondérations par cours
+            UpdatePonderationsParCours();
+
+            // Mise à jour métriques participation
+            UpdateParticipation();
         }
 
-        private void txtNomEleve_TextChanged(object sender, EventArgs e)
+        private void UpdatePonderationsParCours()
         {
+            var pondParCours = new Dictionary<(string cours, int pond), int>();
+            var cmd = new MySqlCommand(@"
+                SELECT c.nom, n.ponderation, COUNT(*) as count_notes
+                FROM notes n
+                JOIN cours c ON n.cours_id = c.id
+                GROUP BY c.nom, n.ponderation", connection);
+
+            var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                string cours = reader.GetString(0);
+                int pond = reader.GetInt32(1);
+                int count = reader.GetInt32(2);
+
+                pondParCours[(cours, pond)] = count;
+            }
+            reader.Close();
+
+            foreach (var key in pondParCours.Keys)
+            {
+                pondParCours.TryGetValue(key, out int val);
+                this.pondParCours.WithLabels(key.cours, key.pond.ToString()).Set(val);
+            }
+        }
+
+        private void UpdateParticipation()
+        {
+            var nbNotesEleve = new Dictionary<string, int>();
+            var cmd = new MySqlCommand(@"
+                SELECT e.nom, COUNT(*) as count_notes
+                FROM notes n
+                JOIN eleves e ON n.eleve_id = e.id
+                GROUP BY e.nom", connection);
+
+            var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                string eleve = reader.GetString(0);
+                int count = reader.GetInt32(1);
+
+                nbNotesEleve[eleve] = count;
+            }
+            reader.Close();
+
+            foreach (var eleve in nbNotesEleve.Keys)
+            {
+                nbNotesParEleve.WithLabels(eleve).Set(nbNotesEleve[eleve]);
+            }
+
+            var nbNotesCours = new Dictionary<string, int>();
+            cmd = new MySqlCommand(@"
+                SELECT c.nom, COUNT(*) as count_notes
+                FROM notes n
+                JOIN cours c ON n.cours_id = c.id
+                GROUP BY c.nom", connection);
+
+            reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                string cours = reader.GetString(0);
+                int count = reader.GetInt32(1);
+
+                nbNotesCours[cours] = count;
+            }
+            reader.Close();
+
+            foreach (var cours in nbNotesCours.Keys)
+            {
+                nbNotesParCours.WithLabels(cours).Set(nbNotesCours[cours]);
+            }
         }
     }
 

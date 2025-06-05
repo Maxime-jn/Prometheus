@@ -29,8 +29,7 @@ Créer une application **Windows Forms en C#** permettant de gérer des élèves
 | Nom du fichier                  | Rôle                                         |
 |--------------------------------|----------------------------------------------|
 | `GestionNotesWinForms/`                       | Application Windows Forms complète           |
-| `create_db.sql`                               | Script SQL de création de la base            |
-| `insert_data.sql`                             | Données de test (élèves, cours, notes)       |
+| `gestion_note.sql`                            | Script SQL de création de la base            |
 | `prometheus.yml`                              | Configuration Prometheus (port 1234)         |
 | `dashboard_gestion_notes.json`                | Dashboard Grafana prêt à importer            |
 | `Documentation_Projet.docx`                   | Rapport du projet                            |

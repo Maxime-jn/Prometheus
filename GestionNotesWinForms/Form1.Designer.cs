@@ -94,7 +94,6 @@
             txtNomEleve.Name = "txtNomEleve";
             txtNomEleve.Size = new Size(227, 25);
             txtNomEleve.TabIndex = 1;
-            txtNomEleve.TextChanged += txtNomEleve_TextChanged;
             // 
             // btnAddEleve
             // 
