@@ -40,7 +40,7 @@ Créer une application **Windows Forms en C#** permettant de gérer des élèves
 
 ## 🧪 Lancer le projet étape par étape
 
-1. **Importer la base** avec `create_db.sql` et `insert_data.sql` dans **MariaDB**
+1. **Importer la base** avec `gestion_note.sql` dans **MariaDB**
 2. **Lancer Prometheus** avec :
    ```bash
    prometheus --config.file=prometheus.yml
